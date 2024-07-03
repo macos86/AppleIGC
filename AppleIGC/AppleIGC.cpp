@@ -7486,6 +7486,9 @@ bool AppleIGC::setupMediumDict()
 
 bool AppleIGC::initEventSources( IOService* provider )
 {
+    int msiIndex = -1;
+    int intrIndex = 0;
+    int intrType = 0;
     bool result = false;
 
     pr_debug("initEventSources() ===>\n");
@@ -7511,11 +7514,24 @@ bool AppleIGC::initEventSources( IOService* provider )
     }
     transmitQueue->retain();
 #endif
-    interruptSource = IOInterruptEventSource::interruptEventSource(this,&AppleIGC::interruptHandler,provider);
+    //interruptSource = IOInterruptEventSource::interruptEventSource(this,&AppleIGC::interruptHandler,provider);
+    while (pdev->getInterruptType(intrIndex, &intrType) == kIOReturnSuccess) {
+        if (intrType & kIOInterruptTypePCIMessaged){
+            msiIndex = intrIndex;
+                break;
+        }
+        intrIndex++;
+    }
+    
+    if (msiIndex != -1) {
+        interruptSource = IOInterruptEventSource::interruptEventSource(this, OSMemberFunctionCast(IOInterruptEventSource::Action, this, &AppleIGC::interruptOccurred), provider, msiIndex);
+    }
+    
     if (!interruptSource) {
         pr_err("MSI interrupt could not be enabled.\n");
         goto error1;
     }
+    
     myWorkLoop->addEventSource(interruptSource);
 
     watchdogSource = IOTimerEventSource::timerEventSource(this, &AppleIGC::watchdogHandler );
